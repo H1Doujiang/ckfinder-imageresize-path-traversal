@@ -371,23 +371,70 @@ blocks all four traversal cases while leaving legitimate in-directory output wor
 `ImageResizePlugin` 的 `ImageResize` 命令在输出文件名（`newFileName`）校验上写错了布尔运算符
 （`&&` 应为 `||`），且拼接路径时未做规范化。`FileUtils.checkFileName()` 会拒绝含 `..` 的文件名，
 但该守卫只在"既不合法又是隐藏文件"时才拒绝，而穿越名不合法却不隐藏，因此从未被拒绝。由此可写入
-资源目录之外的任意可写相对路径，包括 Web 服务器公开可读的目录；配合 `overwrite=1` 可覆盖既有文件。
+资源目录之外的任意可写相对路径，包括 Web 服务器公开可读的目录。
 
-认证只决定谁能触发：`checkAuthentication()` 默认返回 `true`，而官方样例的 `<enabled>` 默认是
-`false` 且附有警告，但不提供该函数的具体实现，部署方最省事的做法（只把 `enabled` 改成 `true`）
-即产生匿名可访问的连接器。缺陷本体在 `ImageResizeCommad` 内部——代码已判定文件名非法却未拒绝，
-把 `&&` 改成 `||` 即可阻断穿越，方法其余部分不动。
+**CVSS 3.1**：未认证场景 `AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:H/A:L` → **8.6**（2.5.1+）；
+因 2.0.2–2.5.0 无法覆盖既有文件，完整性影响降为 `I:L` → 6.5。认证部署场景相应为 7.5 / 5.4。
+分类：CWE-22、CWE-73。
+
+**未直接达成 RCE**：输出扩展名须落在该 type 的白名单内，`Images` 类型只允许
+`bmp,gif,jpeg,jpg,png`，写 `.jsp` 会被扩展名校验以 `Error 105` 拦下。
 
 ### 影响版本
 
-2.6.2 / 2.6.2.1 / 2.6.3 的缺陷文件逐字节相同（sha256 `6d30f2db…`，8,336 字节）。
-2.6.3 的发布说明只涵盖无扩展名上传与内容嗅探两项，未包含本缺陷。3.x / 4.x 不受影响。
+**CKFinder for Java 2.0.2 – 2.6.3**，即官方下载渠道可获取的全部 20 个 2.x 版本，逐个审计后确认
+均含该缺陷。20 个包归结为 9 个不同的缺陷文件版本；其中 **2.6.0 / 2.6.1 / 2.6.2 / 2.6.2.1 / 2.6.3
+五版逐字节相同**（sha256 `6d30f2db…`，8,336 字节）——这就是 2.6.3 这个"安全修复版"对本缺陷毫无
+作用的原因，其发布说明只涵盖无扩展名上传与内容嗅探两项。
+
+下界为 2.0.2（官方渠道可取得的最早版本；2.0 / 2.0.1 返回 404）。各版本哈希见
+[ADVISORY-hashes.md](ADVISORY-hashes.md)。
+
+### 覆盖能力随版本变化
+
+`canWrite()` 判定在 2.5.1 发生了变化：
+
+- **2.0.2 – 2.5.0**：写作 `if (thumbFile.canWrite())`，缺少 `exists()` 前置判断。而
+  `java.io.File.canWrite()` 对**不存在**的路径返回 `true`，于是写新目标成功、
+  **覆盖任何既有文件都失败**（资源目录内外一致）。
+- **2.5.1 – 2.6.3**：改为 `if (thumbFile.exists() && !thumbFile.canWrite())`，覆盖恢复正常。
+
+即：前者是"任意新建"，后者是"任意新建 + 覆盖既有文件"。
+
+### 为什么只有 Java 中招
+
+同代的 PHP / ASP.NET / ColdFusion / Classic ASP 把同一处守卫写对了（`||` / `or`），
+且各自的文件名校验都真的会拦 `..`，因此不受影响：
+
+| 平台 | 门控 | 文件名校验拦 `..` |
+|---|---|---|
+| **Java 2.6.3** | **`&&`** | 会拦，但守卫永不触发 |
+| PHP 2.6.3 | `\|\|` | `strpos($fileName, "..")` |
+| ASP.NET 2.6.3 | `\|\|` | `fileName.Contains("..")` |
+| ColdFusion 2.6.3 | `or` | `find("..", fileName)` |
+| Classic ASP 2.6.3 | `or` | `inStr(fileName, "..")` |
+
+ASP.NET 还额外做了点号替换（`\.(?![^.]*$)` → `_`，注释注明 *security issue*），
+Java 没有这层防护。3.x / 4.x 的 `ImageResize` 已重构，输出名不由用户控制，同样不受影响。
+
+### 认证模型
+
+认证只决定谁能触发：`checkAuthentication()` 默认返回 `true`，而官方样例的 `<enabled>` 默认是
+`false` 且附有警告，但不提供该函数的具体实现，部署方最省事的做法（只把 `enabled` 改成 `true`）
+即产生匿名可访问的连接器。缺陷本体在 `ImageResizeCommad` 内部——代码已判定文件名非法却未拒绝。
 
 ### 修复建议
 
-1. `&&` 改为 `||`；
-2. 输出路径 `getCanonicalFile()` 并校验前缀仍在资源目录内；
+1. **不要**对 `newFileName` 套用 `checkFileName()`，只保留隐藏文件检查。
+   它的语义是"单个文件名"，而 `newFileName` 是相对路径，合法值本来就可能含 `..`（如
+   `sub/../out.png`）；简单把 `&&` 改成 `||` 会连合法路径一起拒掉（`Error 102`），
+   并短路掉扩展名校验。
+2. 输出路径 `getCanonicalFile()` 并校验前缀仍在资源目录内——这才是真正的安全边界。
 3. 部署方：移除 `imageresize` 插件、覆写 `checkAuthentication`、收紧 ACL，或迁移到 3.x / 4.x。
+
+补丁代码与实测结果见英文部分的 [Remediation](#remediation) 与
+[Fix verification](#fix-verification)。完整加固版源码在
+[`lab/fix-verify/ImageResizeCommad-patched.java`](lab/fix-verify/ImageResizeCommad-patched.java)。
 
 复现步骤见英文部分的 [Reproduce with Docker](#reproduce-with-docker)。
 
