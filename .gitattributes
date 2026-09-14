@@ -1,0 +1,12 @@
+# 仓库内容会挂载/复制进 Linux 容器执行，必须强制 LF —— 否则 Dockerfile、
+# setup.sh 等脚本在容器里会因 CRLF 报 "bad interpreter: /bin/bash^M"。
+* text=auto eol=lf
+
+# Windows 专用脚本（如有）保持 CRLF
+*.ps1 text eol=crlf
+
+# 二进制（本仓库不存放厂商二进制，此处仅为防误加）
+*.war binary
+*.jar binary
+*.zip binary
+*.png binary

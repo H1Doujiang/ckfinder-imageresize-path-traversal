@@ -1,0 +1,6 @@
+# Build artifacts and generated files
+lab/src/
+lab/poc/assets/
+*.pyc
+__pycache__/
+.DS_Store
