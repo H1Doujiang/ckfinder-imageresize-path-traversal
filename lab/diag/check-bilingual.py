@@ -1,11 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""中英两节一致性核查：关键主张必须两边都在，旧说法必须都已清除。"""
+"""中英两节一致性核查：关键主张必须两边都在，旧说法必须都已清除。
+
+用法（仓库根目录或任意位置均可）：
+    python3 lab/diag/check-bilingual.py [advisory.md]
+默认检查 lab/../README.md，即仓库根目录的 advisory。
+"""
+import os
 import re
 import sys
 
-path = r"E:\Oracle\myproject\CKFinder\publish\README.md"
+here = os.path.dirname(os.path.abspath(__file__))
+default = os.path.normpath(os.path.join(here, "..", "..", "README.md"))
+path = sys.argv[1] if len(sys.argv) > 1 else default
+if not os.path.isfile(path):
+    sys.exit("找不到 advisory 文件：%s" % path)
+
 txt = open(path, encoding="utf-8").read()
+if "## 中文说明" not in txt:
+    sys.exit("未找到 '## 中文说明' 小节：%s" % path)
 
 i = txt.index("## 中文说明")
 en, zh = txt[:i], txt[i:]
