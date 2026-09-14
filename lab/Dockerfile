@@ -6,10 +6,17 @@
 # 说明：Tomcat 10+ 使用 jakarta.servlet，CKFinder 2.6.x 无法运行，故固定 Tomcat 9。
 FROM ubuntu:22.04
 
+# 被测版本：默认 2.6.2；可用 --build-arg WAR_VERSION=2.1 切换到其他受影响版本
+ARG WAR_VERSION=2.6.2
+# 对应版本的 WAR SHA-256；非 2.6.2 必须显式传入（哈希清单见 ADVISORY-hashes.md）
+ARG EXPECT_WAR_SHA256=e17ab903aff78efaa88fa252a1708b785c871c1ae0db94f6100644dcd1995a0c
+
 ENV DEBIAN_FRONTEND=noninteractive \
     TOMCAT_VERSION=9.0.99 \
     CATALINA_HOME=/opt/tomcat \
     JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64 \
+    WAR_VERSION=${WAR_VERSION} \
+    EXPECT_WAR_SHA256=${EXPECT_WAR_SHA256} \
     PATH=/usr/lib/jvm/java-8-openjdk-amd64/bin:/opt/tomcat/bin:$PATH
 
 RUN apt-get update \

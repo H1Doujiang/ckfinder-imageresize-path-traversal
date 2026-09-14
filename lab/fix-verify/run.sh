@@ -45,9 +45,11 @@ echo "== 6) 判定 =="
 # 补丁生效的判据：T1~T4 的穿越被拒（FAIL），而 T0 与 T5 的反证仍成立（PASS）
 fail_traversal=0
 for t in "穿越写入成功且可被匿名 HTTP 读取" "跨应用目录写入成功" \
-         "无 overwrite 被拒(115)" "输出文件与源文件 sha256 完全一致"; do
+         "输出文件与源文件 sha256 完全一致"; do
   grep -qF "FAIL ] $t" "$OUT" && fail_traversal=$((fail_traversal + 1))
 done
+# T3 的标题随版本变化（是否支持覆盖），两种都算"覆盖未成功"
+grep -qE "FAIL \] (无 overwrite 被拒\(115\)|本版本拒绝一切覆盖)" "$OUT" && fail_traversal=$((fail_traversal + 1))
 pass_controls=0
 grep -qF "PASS ] 匿名 Init 返回 Error 0" "$OUT" && pass_controls=$((pass_controls + 1))
 grep -qF "PASS ] 四项反证符合预期" "$OUT" && pass_controls=$((pass_controls + 1))

@@ -1,36 +1,46 @@
 #!/usr/bin/env bash
-# 一次性部署：安装 Tomcat 9 + 部署官方 CKFinder 2.6.2 WAR + 生成测试资源
-# 幂等：重复执行安全。
+# 一次性部署：安装 Tomcat 9 + 部署官方指定版本的 CKFinder WAR + 生成测试资源
+#
+# 可用 WAR_VERSION 选择被测版本（默认 2.6.2）：
+#   docker build --build-arg WAR_VERSION=2.1 -t ckfinder-lab:2.1 ./lab
+# 老版本的 WAR 文件名不同（2.0.x–2.3 为 CKFinderJava.war，2.4+ 带版本号），脚本按版本推导。
 set -euo pipefail
 
 TOMCAT_VERSION="${TOMCAT_VERSION:-9.0.99}"
 CATALINA_HOME="${CATALINA_HOME:-/opt/tomcat}"
+WAR_VERSION="${WAR_VERSION:-2.6.2}"
 
 log() { printf '\033[1;36m[setup]\033[0m %s\n' "$*"; }
 
+# 各版本 WAR 在官方 zip 内的文件名
+case "$WAR_VERSION" in
+  2.0.*|2.1|2.1.1|2.2|2.2.1|2.2.2|2.3|2.3.1) WAR_NAME="CKFinderJava.war" ;;
+  *)                                           WAR_NAME="CKFinderJava-${WAR_VERSION}.war" ;;
+esac
+
 # ---------------------------------------------------------------------------
-# 0) 定位官方 2.6.2 WAR
-#    查找顺序：-e WAR=... 指定 -> 只读挂载的官方发行包 -> 官方渠道下载
+# 0) 定位官方 WAR
+#    查找顺序：-e WAR=... 指定 -> 离线暂存目录 -> 官方渠道下载
 # 本仓库不分发厂商二进制，构建时从官方渠道下载
 # ---------------------------------------------------------------------------
 if [ -z "${WAR:-}" ]; then
-  for c in /opt/ckfinder-pkgs/CKFinderJava-2.6.2.war \
-           /lab/src/CKFinderJava-2.6.2.war; do
+  for c in "/opt/ckfinder-pkgs/$WAR_NAME" "/lab/src/$WAR_NAME"; do
     [ -f "$c" ] && WAR="$c" && break
   done
 fi
 if [ -z "${WAR:-}" ] || [ ! -f "${WAR:-}" ]; then
   mkdir -p /lab/src
-  WAR=/lab/src/CKFinderJava-2.6.2.war
-  log "从官方渠道下载 ckfinder_java_2.6.2.zip（约 5.9 MB）"
-  curl -fsSL --retry 3 --retry-delay 2 -o /tmp/ckfinder_java_2.6.2.zip \
-    "https://download.cksource.com/CKFinder/CKFinder%20for%20Java/2.6.2/ckfinder_java_2.6.2.zip"
-  unzip -q -j /tmp/ckfinder_java_2.6.2.zip '*/CKFinderJava-2.6.2.war' -d /lab/src
-  rm -f /tmp/ckfinder_java_2.6.2.zip
+  WAR="/lab/src/$WAR_NAME"
+  log "从官方渠道下载 ckfinder_java_${WAR_VERSION}.zip"
+  curl -fsSL --retry 3 --retry-delay 2 -o "/tmp/war-$WAR_VERSION.zip" \
+    "https://download.cksource.com/CKFinder/CKFinder%20for%20Java/${WAR_VERSION}/ckfinder_java_${WAR_VERSION}.zip"
+  unzip -q -j "/tmp/war-$WAR_VERSION.zip" "*/$WAR_NAME" -d /lab/src
+  rm -f "/tmp/war-$WAR_VERSION.zip"
 fi
 
 # 校验官方 WAR 的 SHA-256 —— 确保复现针对的是未被篡改的官方原件
-# （哈希同时记录在仓库 ADVISORY-hashes.md 中，便于第三方独立核对）
+# 默认值为 2.6.2 的 WAR；测其他版本时用 -e EXPECT_WAR_SHA256=<实际值> 指定，
+# 或先离线放好再构建。哈希清单见 ADVISORY-hashes.md。
 EXPECT_WAR_SHA256="${EXPECT_WAR_SHA256:-e17ab903aff78efaa88fa252a1708b785c871c1ae0db94f6100644dcd1995a0c}"
 actual_war_sha256="$(sha256sum "$WAR" | awk '{print $1}')"
 if [ "$actual_war_sha256" = "$EXPECT_WAR_SHA256" ]; then
@@ -42,7 +52,7 @@ else
   log "   如确认是官方原件，可用 -e EXPECT_WAR_SHA256=<实际值> 覆盖重跑"
   exit 1
 fi
-log "使用 WAR: $WAR ($(stat -c%s "$WAR") bytes)"
+log "使用 WAR: $WAR ($(stat -c%s "$WAR") bytes)  版本 $WAR_VERSION"
 
 # ---------------------------------------------------------------------------
 # 1) Tomcat 9（javax.servlet）

@@ -17,10 +17,10 @@ With `overwrite=1`, existing files are replaced.
 |---|---|
 | Product | CKFinder for Java (`ImageResizePlugin`) |
 | Vendor | CKSource |
-| Affected | 2.6.2, 2.6.2.1, 2.6.3 (final 2.6.x release) |
-| Not affected | CKFinder 3.x / 4.x |
+| Affected | CKFinder for Java 2.0.2 – 2.6.3 (all 20 downloadable 2.x releases) |
+| Not affected | CKFinder 3.x / 4.x; CKFinder for PHP, ASP.NET, ColdFusion and Classic ASP |
 | CWE | CWE-22, CWE-73 |
-| CVSS 3.1 | `AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:H/A:L` → **8.6** (unauthenticated)<br>`AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:H/A:L` → 7.5 (authenticated deployment) |
+| CVSS 3.1 | `AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:H/A:L` → **8.6** (unauthenticated, 2.5.1+)<br>`AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N` → 6.5 (2.0.2–2.5.0, no overwrite)<br>`AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:H/A:L` → 7.5 / 5.4 for authenticated deployments |
 | Vendor status | Unfixed; 2.6.x reached end of life in November 2019 |
 | Public status | No CVE, no vendor advisory, no public exploit (as of 2026-09) |
 
@@ -28,16 +28,66 @@ With `overwrite=1`, existing files are replaced.
 
 ## Affected versions
 
-| Version | Defect present | Notes |
-|---|---|---|
-| 2.6.2 | Yes | |
-| 2.6.2.1 | Yes | Byte-identical to 2.6.2 |
-| 2.6.3 | Yes | The security-release notes describe two unrelated fixes |
-| 3.5.1 / 3.6.x / 4.x | No | `ImageResize` rewritten; the output name is generated internally |
+The defect is present in **every Java 2.x release available from the vendor's download channel**.
+All twenty were downloaded from `download.cksource.com` and audited:
 
-The defective file is byte-identical in all three affected releases — sha256
-`6d30f2db787aa0f61b0b77287e73de714018c6814625bda6d2cb9dea564c0d4f`, 8,336 bytes.
-Per-version archive hashes are in [ADVISORY-hashes.md](ADVISORY-hashes.md).
+| Version | Defective guard | Runtime-verified | Overwrite of existing files |
+|---|---|---|---|
+| 2.0.2, 2.0.2.1 | `&&` | 2.0.2 tested end to end | no — see below |
+| 2.1, 2.1.1 | `&&` | 2.1 tested end to end | no |
+| 2.2, 2.2.1, 2.2.2, 2.3 | `&&` | source-audited | no |
+| 2.3.1 | `&&` | tested end to end | no |
+| 2.4, 2.4.1, 2.4.2, 2.4.3 | `&&` | source-audited | no |
+| 2.5.0 | `&&` | tested end to end | no |
+| 2.5.1 | `&&` | tested end to end | yes |
+| 2.6.0, 2.6.1 | `&&` | 2.6.0 tested end to end | yes |
+| 2.6.2, 2.6.2.1, 2.6.3 | `&&` | all tested end to end | yes |
+| 3.5.1 / 3.6.x / 4.x | n/a | rewritten | not applicable |
+
+The twenty releases reduce to nine distinct versions of this file. The 2.6 line is the most
+uniform: **2.6.0, 2.6.1, 2.6.2, 2.6.2.1 and 2.6.3 all carry a byte-identical copy**
+(sha256 `6d30f2db787aa0f61b0b77287e73de714018c6814625bda6d2cb9dea564c0d4f`, 8,336 bytes) —
+so the 2.6.3 "security release" did not touch it. Earlier releases differ only in unrelated
+surrounding code; the broken guard is unchanged from 2.0.2 through 2.6.3. Per-version hashes for
+every release are in [ADVISORY-hashes.md](ADVISORY-hashes.md).
+
+### Overwrite capability depends on the release
+
+From 2.0.2 to 2.5.0 the writability check reads:
+
+```java
+if (thumbFile.canWrite()) {                       // no exists() guard
+    return Constants.Errors.CKFINDER_CONNECTOR_ERROR_ACCESS_DENIED;
+}
+```
+
+`java.io.File.canWrite()` returns `true` for a path that does not exist, so on these releases
+**writing a new file succeeds but overwriting any existing file fails** — inside the resource
+directory as much as outside it. From 2.5.1 the check becomes
+`if (thumbFile.exists() && !thumbFile.canWrite())` and overwriting works normally.
+
+The consequence for impact: on 2.0.2–2.5.0 the primitive is arbitrary **create** (outside the
+resource directory); on 2.5.1–2.6.3 it is arbitrary create **and replace**. The PoC detects which
+behaviour a build exhibits rather than assuming one.
+
+### Why only the Java connector
+
+The other CKFinder 2.x platforms implement the same guard correctly, so their equivalent
+`checkFileName` blocks `..` as intended:
+
+| Platform | Version | Guard | Filename check rejects `..` |
+|---|---|---|---|
+| **Java** | 2.6.3 | **`&&`** | yes, but the guard never fires |
+| PHP | 2.6.3 | `\|\|` | `strpos($fileName, "..")` |
+| ASP.NET | 2.6.3 | `\|\|` | `fileName.Contains("..")` |
+| ColdFusion | 2.6.3 | `or` | `find("..", fileName)` |
+| Classic ASP | 2.6.3 | `or` | `inStr(fileName, "..")` |
+
+The intended semantics are "reject if the name is invalid **or** hidden"; writing `&&` inverts the
+guard into "reject only if invalid **and** hidden", which a traversal name never satisfies.
+ASP.NET additionally rewrites interior dots (`\.(?![^.]*$)` → `_`) with a comment citing a
+*"security issue"*, giving that platform a second layer the Java connector lacks.
+
 
 The 2.6.3 release notes list two fixes:
 
@@ -153,6 +203,8 @@ An attacker able to reach the connector can:
   image's dimensions — a byte-for-byte copy of the uploaded source, which preserves arbitrary
   data appended after the image payload.
 - The source file must be readable as an image, since the command calls `ImageIO.read()` on it.
+- On 2.0.2–2.5.0, existing files cannot be replaced (see [Overwrite capability](#overwrite-capability-depends-on-the-release)),
+  so those releases allow creating new files outside the resource directory but not overwriting.
 
 ---
 
