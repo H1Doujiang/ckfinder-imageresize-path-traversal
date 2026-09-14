@@ -79,12 +79,27 @@ for f in ("lab/Dockerfile", "lab/setup.sh", "lab/run-lab.sh", "lab/restart-tomca
           "lab/fix-verify/ImageResizeCommad-patched.java", "deploy.sh", "LICENSE"):
     chk(os.path.isfile(f), "存在 %s" % f)
 
-print("\n=== 7. 推送准备度 ===")
-remote = sh("git", "remote", "-v")
-chk(not remote, "尚未配置 remote（未推送，符合预期）")
-print("      推送命令：")
-print("        git remote add origin https://github.com/H1Doujiang/ckfinder-imageresize-path-traversal.git")
-print("        git push -u origin main")
+print("\n=== 7. 远端一致性（推送后核对） ===")
+remote_url = sh("git", "remote", "get-url", "origin")
+if not remote_url:
+    chk(False, "remote origin 未配置")
+    print("      配置并推送：")
+    print("        git remote add origin git@github.com:H1Doujiang/ckfinder-imageresize-path-traversal.git")
+    print("        git push -u origin main")
+else:
+    chk(True, "remote origin = %s" % remote_url)
+    upstream = sh("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+    chk(bool(upstream), "本地分支已跟踪远端（%s）" % (upstream or "无"))
+    # 远端 HEAD 需要走网络；失败时给 WARN 而不是 FAIL，避免离线误判
+    r = subprocess.run(["git", "ls-remote", "origin", "main"],
+                       capture_output=True, text=True, encoding="utf-8")
+    if r.returncode != 0:
+        print("  [WARN] 无法访问远端（离线或链路问题）：%s" % (r.stderr.strip()[:80]))
+    else:
+        remote_head = r.stdout.split()[0] if r.stdout.split() else ""
+        local_head = sh("git", "rev-parse", "HEAD")
+        chk(remote_head == local_head, "远端 HEAD 与本地一致",
+            "%s vs %s" % (remote_head[:7], local_head[:7]))
 
 print("\n" + "=" * 62)
 print("文件数 %d ｜ 提交数 %s ｜ 分支 %s" % (
@@ -92,4 +107,4 @@ print("文件数 %d ｜ 提交数 %s ｜ 分支 %s" % (
 if problems:
     print("存在 %d 项问题：%s" % (len(problems), problems))
     sys.exit(1)
-print("验收全部通过 —— 可以推送")
+print("验收全部通过")
