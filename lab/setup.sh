@@ -158,6 +158,7 @@ grep -q 'imageresize' "$APP/WEB-INF/config.xml" \
 
 # ---------------------------------------------------------------------------
 # 5) 生成容器内辅助脚本 + 测试用源图
+#    lab-reset.sh 由本脚本在构建期写入容器，不进仓库（内容是实验室产物清理）
 # ---------------------------------------------------------------------------
 cat > /lab/lab-reset.sh <<'SH'
 #!/usr/bin/env bash
@@ -171,14 +172,7 @@ mkdir -p /opt/tomcat/webapps/shared/WEB-INF /opt/tomcat/webapps/ROOT/upload/logi
 echo "[lab-reset] 已清理：userfiles 穿越残留 + ROOT/upload/login + webapps/shared"
 SH
 
-cat > /lab/start-tomcat.sh <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-export CATALINA_HOME=/opt/tomcat JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
-export PATH="$JAVA_HOME/bin:$CATALINA_HOME/bin:$PATH"
-exec catalina.sh run
-SH
-chmod +x /lab/lab-reset.sh /lab/start-tomcat.sh
+chmod +x /lab/lab-reset.sh
 
 # 测试用源图（1x1 与 10x10，用于区分"重采样"与"原样字节复制"）
 python3 - <<'PY'
