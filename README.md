@@ -56,7 +56,7 @@ CVE-2019-15891. Neither concerns the `ImageResize` plugin.
 (the filename uses the vendor's spelling, `Commad`).
 
 ```java
-// Output file name validation — the operator should be ||
+// Output file name validation
 if (!FileUtils.checkFileName(this.newFileName)
     && FileUtils.checkIfFileIsHidden(this.newFileName, configuration)) {
     return Constants.Errors.CKFINDER_CONNECTOR_ERROR_INVALID_NAME;
