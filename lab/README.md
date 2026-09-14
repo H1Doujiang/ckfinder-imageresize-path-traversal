@@ -1,7 +1,8 @@
 # CKFinder 本地复现实验室（Docker / ubuntu:22.04）
 
 隔离复现 **CKFinder for Java 2.6.x —— ImageResize 插件路径穿越写入漏洞**。
-所有环境（JDK、Tomcat、部署、PoC、修复验证）都在容器内，宿主只存放脚本与官方 WAR，**不污染本机**。
+所有环境（JDK、Tomcat、部署、PoC、修复验证）都在容器内运行，**不污染宿主机**。
+厂商二进制不随仓库分发，构建时从官方渠道下载并校验 SHA-256。
 
 ---
 
@@ -11,38 +12,59 @@
 lab/
 ├── Dockerfile                      # ubuntu:22.04 + OpenJDK 8 + Tomcat 9
 ├── setup.sh                        # 容器内一次性部署（装 Tomcat、部署 WAR、打配置补丁、生成源图）
-├── run-lab.sh                      # 容器启动入口（前台 Tomcat，便于 docker exec 进容器）
+├── run-lab.sh                      # 容器启动入口（supervisor：让容器在 Tomcat 重启后仍存活）
+├── restart-tomcat.sh               # 只重启 Tomcat（容器不退出）
+├── stop-lab.sh                     # 请求关闭实验室（让容器退出）
+├── src/                            # 离线构建用（默认空，见 src/README.md；不存放厂商二进制）
 ├── poc/
 │   ├── exploit.py                  # 全流程验证（T0~T5 用例 + 自动判定）
 │   └── poc.sh                      # 等待就绪后一键跑 PoC
-└── fix-verify/
-    ├── ImageResizeCommad-patched.java   # 加固版（&& -> || + canonical 边界校验）
-    └── run.sh                           # 编译补丁 -> 替换 jar -> 重启 -> 重跑同一套 PoC
+├── fix-verify/
+│   ├── ImageResizeCommad-patched.java   # 加固版（&& -> || + canonical 边界校验）
+│   └── run.sh                           # 编译补丁 -> 替换 jar -> 重启 -> 重跑同一套 PoC
+└── diag/                           # 复现辅助（排查用，不参与主链路）
+    ├── probe-depth.py              # 标定 ../ 穿越深度，找落点
+    ├── probe-createfolder.py       # 单独验证 CreateFolder 的 CSRF 与返回
+    ├── probe-t1.py                 # 复刻 T1 并打印完整响应
+    ├── verify-ckfindercommand.sh   # 验证 CKFinderCommand 必须是表单参数
+    ├── install-paramdump.sh        # 装一个把请求参数打印到日志的过滤器
+    ├── ParamDumpFilter.java        # 上述过滤器实现
+    ├── fire-requests.sh            # 发一组 GET/POST 请求供过滤器观察
+    └── inspect.sh                  # 查看容器内目录布局与配置
 ```
 
 ## 2. 快速开始
 
-```powershell
-# 宿主（Windows）: 进入 lab 目录
-cd E:\Oracle\myproject\CKFinder\lab
+```bash
+# 1) 克隆仓库并进入 lab 目录
+git clone https://github.com/H1Doujiang/ckfinder-imageresize-path-traversal.git
+cd ckfinder-imageresize-path-traversal/lab
 
-# 1) 构建镜像（会自动下载 Tomcat 9.0.99 到镜像内）
+# 2) 构建镜像（构建期会从官方渠道下载 CKFinder 2.6.2 WAR 与 Tomcat 9.0.99，并校验 WAR 的 SHA-256）
 docker build -t ckfinder-lab:2.6.2 .
 
-# 2) 启动容器（宿主 18080 -> 容器 8080）
+# 3) 启动容器（宿主 18080 -> 容器 8080）
 docker run -d --name ckfinder-lab -p 18080:8080 ckfinder-lab:2.6.2
 
-# 3) 一键跑 PoC（T0~T5）
+# 4) 一键跑 PoC（T0~T5）
 docker exec -it ckfinder-lab /lab/poc/poc.sh
 
-# 4) 修复验证（编译加固版插件、重启、重跑同一套 PoC）
+# 5) 修复验证（编译加固版插件、重启、重跑同一套 PoC）
 docker exec -it ckfinder-lab /lab/fix-verify/run.sh
 
-# 5) 进容器自己复测
+# 6) 进容器自己复测
 docker exec -it ckfinder-lab bash
 
-# 6) 清理
+# 7) 清理
 docker rm -f ckfinder-lab; docker rmi ckfinder-lab:2.6.2
+```
+
+仓库根目录下还有一个封装脚本，等价于上面第 2~4 步：
+
+```bash
+./deploy.sh all      # build + up + poc
+./deploy.sh fix      # 打补丁重跑，验证穿越被阻断
+./deploy.sh down     # 删除容器
 ```
 
 宿主直接访问写入结果（证明"资源目录之外 + 匿名可读"）：
