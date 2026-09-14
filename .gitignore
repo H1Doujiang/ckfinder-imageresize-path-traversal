@@ -1,6 +1,10 @@
-# Build artifacts and generated files
-lab/src/
+# Generated at build/run time
 lab/poc/assets/
+
+# Vendor binary staged for an offline build (see lab/src/README.md)
+lab/src/*
+!lab/src/README.md
+
 *.pyc
 __pycache__/
 .DS_Store

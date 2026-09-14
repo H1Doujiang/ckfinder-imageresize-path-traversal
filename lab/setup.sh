@@ -11,7 +11,7 @@ log() { printf '\033[1;36m[setup]\033[0m %s\n' "$*"; }
 # ---------------------------------------------------------------------------
 # 0) 定位官方 2.6.2 WAR
 #    查找顺序：-e WAR=... 指定 -> 只读挂载的官方发行包 -> 官方渠道下载
-#    本仓库【不重新分发】厂商二进制，公开克隆后走官方下载路径即可。
+# 本仓库不分发厂商二进制，构建时从官方渠道下载
 # ---------------------------------------------------------------------------
 if [ -z "${WAR:-}" ]; then
   for c in /opt/ckfinder-pkgs/CKFinderJava-2.6.2.war \
@@ -70,7 +70,6 @@ rm -rf "$CATALINA_HOME"/webapps/docs "$CATALINA_HOME"/webapps/examples \
 #      <url-pattern> /ckfinder/core/connector/java/connector.java </url-pattern>
 #    因此必须以 ROOT 上下文部署（应用上下文 = /），连接器才是
 #      /ckfinder/core/connector/java/connector.java
-#    与报告 §5.1 的端点写法（<部署前缀>/core/connector/java/connector.java）一致。
 #
 #    /opt/tomcat/webapps/ROOT/Resources/userfiles        <- CKFinder 资源目录（仅应写此处）
 #    /opt/tomcat/webapps/ROOT/upload/login               <- 资源目录之外的"公网可访问目录"（穿越目标）
@@ -90,27 +89,24 @@ mkdir -p "$CATALINA_HOME/webapps/shared/WEB-INF"
 # ---------------------------------------------------------------------------
 if [ ! -f "$APP/WEB-INF/config.xml" ]; then
   log "解包部署 WAR -> $APP"
-  # 清掉 Tomcat 自带默认首页，避免与 CKFinder 静态目录混淆
+  # 整个清空 ROOT（含 Tomcat 自带默认首页）后解包
   rm -rf "$APP"; mkdir -p "$APP"
   unzip -q "$WAR" -d "$APP"
 else
   log "应用已部署，仅重打配置补丁"
 fi
 
-# 官方 META-INF/context.xml 内含 context 级属性（Tomcat 9 已废弃 antiJARLocking，会告警），
-# 保留 path 声明以示与原包一致，仅去掉废弃属性。
+# 整个删除 META-INF/context.xml：其 antiJARLocking 属性在 Tomcat 9 已废弃，会告警
 rm -f "$APP/META-INF/context.xml"
 
 # 资源类型根目录（config.xml 声明 Files/Images/Flash 三个类型）。
-# 注意：必须放在 WAR 解包之后 —— 上面的 rm -rf "$APP" 会一并删掉提前建好的目录。
-# 真实部署中这些目录由部署方建好或首次上传时生成。
+# 必须在 WAR 解包之后创建 —— 上面的 rm -rf "$APP" 会一并删掉提前建好的目录。
 mkdir -p "$BASE/files" "$BASE/images" "$BASE/flash"
 
 # ---------------------------------------------------------------------------
-# 4) 配置补丁：仅"启用连接器 + 指定资源目录"，认证与 ACL 保持官方默认
-#    官方默认：Configuration.checkAuthentication() 直通 return true
-#              样例 ACL 对通配角色 <role>*</role> 授予全部权限
-#    即：与"部署方照官方样例配置启用"的真实场景一致，不做任何额外加固
+# 4) 配置补丁：启用连接器 + 指定资源目录；认证与 ACL 保持官方默认
+#    Configuration.checkAuthentication() 直通 return true；
+#    样例 ACL 对通配角色 <role>*</role> 授予全部权限
 # ---------------------------------------------------------------------------
 log "打配置补丁（enabled=true / baseDir / baseURL），认证与 ACL 保持官方默认"
 python3 - "$APP/WEB-INF/config.xml" "$BASE" <<'PY'
@@ -120,18 +116,17 @@ s = open(path, encoding='utf-8').read()
 orig = s
 
 s = s.replace('<enabled>false</enabled>', '<enabled>true</enabled>')
+# 已打过补丁时上面不会命中；此时 enabled 已是 true，无需处理
 
-# baseDir 标签在官方样例中为空
-if '<baseDir></baseDir>' in s:
-    s = s.replace('<baseDir></baseDir>', '<baseDir>%s</baseDir>' % base, 1)
-else:
-    s, n = re.subn(r'<baseDir\s*/>|<baseDir>\s*</baseDir>',
-                   '<baseDir>%s</baseDir>' % base, s, count=1)
-    if n == 0:
-        raise SystemExit('!! 未能定位 baseDir 标签，请人工检查 config.xml')
+# baseDir：把标签内容替换为实验室目录（无论官方样例是空、是默认值还是已打过补丁）
+s, n = re.subn(r'<baseDir>.*?</baseDir>|<baseDir\s*/>',
+               '<baseDir>%s</baseDir>' % base, s, count=1, flags=re.S)
+if n == 0:
+    raise SystemExit('!! 未能定位 baseDir 标签，请人工检查 config.xml')
 
-s = s.replace('<baseURL>/CKFinderJava/userfiles/</baseURL>',
-              '<baseURL>/Resources/userfiles/</baseURL>', 1)
+# baseURL 与 baseDir 对应
+s = re.sub(r'<baseURL>.*?</baseURL>', '<baseURL>/Resources/userfiles/</baseURL>',
+           s, count=1, flags=re.S)
 
 if s == orig:
     raise SystemExit('!! config.xml 未发生任何变化，补丁失败')
@@ -146,17 +141,17 @@ print('   baseURL      : %s' % ok_url)
 assert ok_enabled and ok_base and ok_url, '配置补丁校验未通过'
 PY
 
-# 插件已在官方 config.xml 中启用（imageresize / fileeditor），此处仅确认
+# 插件由官方 config.xml 启用，此处只断言其存在
 grep -q 'imageresize' "$APP/WEB-INF/config.xml" \
   && log "imageresize 插件：已启用（官方默认）" \
   || log "警告：config.xml 中未见 imageresize 插件"
 
 # ---------------------------------------------------------------------------
-# 5) 生成 lab/cleanup 辅助脚本 + 测试用源图
+# 5) 生成容器内辅助脚本 + 测试用源图
 # ---------------------------------------------------------------------------
 cat > /lab/lab-reset.sh <<'SH'
 #!/usr/bin/env bash
-# 清理上一轮复现产物，恢复"仅跳板目录 + 空公网目录"的初始状态
+# 清理上一轮复现产物，恢复到"只有跳板目录 + 空目标目录"的状态
 set -euo pipefail
 BASE=/opt/tomcat/webapps/ROOT/Resources/userfiles
 rm -rf "$BASE/Resources" "$BASE/shared" "$BASE/upload"
@@ -164,7 +159,6 @@ rm -rf /opt/tomcat/webapps/ROOT/upload/login/*
 rm -rf /opt/tomcat/webapps/shared/*
 mkdir -p /opt/tomcat/webapps/shared/WEB-INF /opt/tomcat/webapps/ROOT/upload/login
 echo "[lab-reset] 已清理：userfiles 穿越残留 + ROOT/upload/login + webapps/shared"
-ls -la /opt/tomcat/webapps/ROOT/upload/login
 SH
 
 cat > /lab/start-tomcat.sh <<'SH'

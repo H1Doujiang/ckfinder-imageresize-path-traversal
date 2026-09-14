@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
-# 实验室启动脚本（容器内 PID 1）
 #
 # 为什么不是简单的 `exec catalina.sh run`：
 #   容器内 `shutdown.sh` 会停掉 Tomcat —— 而 Tomcat 就是 PID 1，
 #   一旦它退出容器就整体退出了（修复验证需要反复重启 Tomcat）。
 #   因此这里用极简 supervisor：Tomcat 退出后按需拉起，容器保持存活。
-#
-# 控制：
-#   关闭容器          -> docker stop ckfinder-lab
-#   仅重启 Tomcat     -> docker exec ckfinder-lab /lab/restart-tomcat.sh
-#   关闭实验室        -> docker exec ckfinder-lab /lab/stop-lab.sh
 set -uo pipefail
 
 export CATALINA_HOME="${CATALINA_HOME:-/opt/tomcat}"

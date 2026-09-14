@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# 仅重启容器内的 Tomcat（容器本身保持运行）
 #
 # 关键：必须等旧实例真正停掉、新实例起来 —— 否则请求会打到尚未退出的旧进程，
-# 导致"补丁已替换却没生效"的假象（本实验室踩过这个坑）。
+# 让人误以为"补丁已替换却没生效"。
 set -u
 EP="http://127.0.0.1:8080/ckfinder/core/connector/java/connector.java?command=Init"
 

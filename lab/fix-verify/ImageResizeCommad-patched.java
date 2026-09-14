@@ -131,10 +131,12 @@ public class ImageResizeCommad extends XMLCommand implements IEventHandler {
 
 			if (this.width != null && this.height != null) {
 
-				// [FIX-1] && 改为 ||：原写法等价于
-				//   (非法 && 隐藏) —— 而非法的穿越名恰好"不隐藏"，因此永不拒绝。
-				if (!FileUtils.checkFileName(this.newFileName)
-					|| FileUtils.checkIfFileIsHidden(this.newFileName, configuration)) {
+				// [FIX-1] 不再对 newFileName 套用 checkFileName()：
+				//   它的语义是"单个文件名"（拒绝含 ".." 的名字），但 newFileName 是
+				//   相对类型根目录的路径，合法值本来就可能含 ".."（如 "sub/../out.png"）。
+				//   把 && 改成 || 会连合法路径一起拒掉，属于过宽。
+				//   这里只保留隐藏文件检查，真正的安全边界交给 [FIX-2] 的 canonical 校验。
+				if (FileUtils.checkIfFileIsHidden(this.newFileName, configuration)) {
 					return Constants.Errors.CKFINDER_CONNECTOR_ERROR_INVALID_NAME;
 				}
 
@@ -143,7 +145,7 @@ public class ImageResizeCommad extends XMLCommand implements IEventHandler {
 					return Constants.Errors.CKFINDER_CONNECTOR_ERROR_INVALID_EXTENSION;
 				}
 
-				// [FIX-2] 路径 canonical 化 + 边界校验
+				// [FIX-2] 路径 canonical 化 + 边界校验：解析完 ".." 之后再判断是否越出资源目录
 				File thumbFile = resolveOutputFile();
 				if (thumbFile == null) {
 					return Constants.Errors.CKFINDER_CONNECTOR_ERROR_ACCESS_DENIED;

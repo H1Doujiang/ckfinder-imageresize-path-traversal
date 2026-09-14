@@ -1,7 +1,7 @@
 # Official artifact hashes used in this analysis
 
-All hashes are SHA-256. Vendored binaries are **not** redistributed in this repository;
-download them from the vendor's official channel and verify against the values below.
+All hashes are SHA-256. Vendored binaries are not redistributed here; download them from the
+vendor's official channel and verify against the values below.
 
 ## CKFinder for Java 2.6.2 (primary reproduction target)
 
@@ -34,7 +34,7 @@ Download:
 Download:
 `https://download.cksource.com/CKFinder/CKFinder%20for%20Java/2.6.3/ckfinder_java_2.6.3.zip`
 
-## CKFinder 3.x (verified NOT affected)
+## CKFinder 3.x (not affected)
 
 | Artifact | SHA-256 | Size |
 |---|---|---|
@@ -69,22 +69,9 @@ unzip -p ckfinder_java_2.6.3.zip \
 # expected: 6d30f2db787aa0f61b0b77287e73de714018c6814625bda6d2cb9dea564c0d4f
 ```
 
-## Default authentication behaviour
+## Lab configuration
 
-`Configuration.checkAuthentication()` in `CKFinder-2.6.2.jar` (inside the WAR) compiles to an
-unconditional `return true`:
-
-```
-$ javap -p -c -cp CKFinder-2.6.2.jar com.ckfinder.connector.configuration.Configuration
-  public boolean checkAuthentication(javax.servlet.http.HttpServletRequest);
-      Code:
-         0: iconst_1
-         1: ireturn
-```
-
-## Note on `enabled=false`
-
-The bundled sample `WEB-INF/config.xml` ships with `<enabled>false</enabled>` and carries a
-warning against enabling it without implementing session validation. The lab sets
-`<enabled>true</enabled>` and leaves `checkAuthentication` unoverridden — i.e. exactly the
-configuration a deployer reaches by following the sample — and changes nothing else.
+The sample `WEB-INF/config.xml` ships with `<enabled>false</enabled>` and a warning against
+enabling it without session validation. The lab sets `<enabled>true</enabled>`, points `baseDir`
+and `baseURL` at a local directory, and leaves `checkAuthentication` unoverridden. Everything
+else is the vendor's original configuration.

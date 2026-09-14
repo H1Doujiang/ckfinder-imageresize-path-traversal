@@ -12,7 +12,7 @@ BUILD=/tmp/fix-build
 
 echo "== 1) 准备编译环境（依赖取自官方 WAR 自带 jar） =="
 rm -rf "$BUILD"; mkdir -p "$BUILD/src" "$BUILD/classes"
-# javac 要求 public 类所在文件名与类名一致（ImageResizeCommad，注意官方原始拼写）
+# 文件名须与 public 类名一致；"Commad" 是官方原始拼写，勿改
 cp /lab/fix-verify/ImageResizeCommad-patched.java "$BUILD/src/ImageResizeCommad.java"
 
 CP="$(find "$APP/WEB-INF/lib" -name '*.jar' | tr '\n' ':')$CATALINA_HOME/lib/servlet-api.jar"
@@ -30,34 +30,36 @@ echo "  已更新 $PLUGIN_JAR"
 unzip -l "$PLUGIN_JAR" | grep ImageResizeCommad | sed 's/^/    /'
 
 echo "== 4) 重启 Tomcat（容器内置 supervisor 负责拉起） =="
-if [ -x /lab/restart-tomcat.sh ]; then
-  /lab/restart-tomcat.sh
-else
-  "$CATALINA_HOME/bin/shutdown.sh" 2>/dev/null || true
-  sleep 5
-  nohup "$CATALINA_HOME/bin/catalina.sh" run >/tmp/tomcat-patched.log 2>&1 &
-  for i in $(seq 1 60); do
-    if curl -fsS -o /dev/null "http://127.0.0.1:8080/ckfinder/core/connector/java/connector.java?command=Init" 2>/dev/null; then
-      echo "  Tomcat 已重启（第 ${i} 次探测）"; break
-    fi
-    sleep 1
-    [ "$i" = "60" ] && { echo "  !! 重启失败，见 /tmp/tomcat-patched.log"; exit 1; }
-  done
-fi
+/lab/restart-tomcat.sh
+
 echo "== 5) 重跑同一套 PoC（预期：穿越用例全部被拒） =="
+OUT=/tmp/poc-patched.txt
 set +e
-python3 /lab/poc/exploit.py
-rc=$?
+python3 /lab/poc/exploit.py 2>&1 | tee "$OUT"
 set -e
+# 去掉 ANSI 颜色码，便于匹配
+sed -i 's/\x1b\[[0-9;]*m//g' "$OUT"
 
 echo
-echo "== 6) 结论 =="
-if [ "$rc" -ne 0 ]; then
-  echo "  PoC 出现 FAIL 项 —— 对补丁版而言这通常正是『穿越已阻断』的预期结果："
-  echo "    T1/T2/T3/T4 因穿越被拒而 FAIL = 修复生效"
-  echo "    T5 反证是否仍符合预期，请对照上方输出"
+echo "== 6) 判定 =="
+# 补丁生效的判据：T1~T4 的穿越被拒（FAIL），而 T0 与 T5 的反证仍成立（PASS）
+fail_traversal=0
+for t in "穿越写入成功且可被匿名 HTTP 读取" "跨应用目录写入成功" \
+         "无 overwrite 被拒(115)" "输出文件与源文件 sha256 完全一致"; do
+  grep -qF "FAIL ] $t" "$OUT" && fail_traversal=$((fail_traversal + 1))
+done
+pass_controls=0
+grep -qF "PASS ] 匿名 Init 返回 Error 0" "$OUT" && pass_controls=$((pass_controls + 1))
+grep -qF "PASS ] 四项反证符合预期" "$OUT" && pass_controls=$((pass_controls + 1))
+
+printf '  穿越用例被拒: %d/4   反证仍成立: %d/2\n' "$fail_traversal" "$pass_controls"
+if [ "$fail_traversal" -eq 4 ] && [ "$pass_controls" -eq 2 ]; then
+  echo "  补丁生效：四类穿越全部被拒，且 T0/T5 行为不变"
 else
-  echo "  所有用例 PASS —— 说明补丁未生效或补丁未加载，请检查 jar 替换与 Tomcat 重启"
+  echo "  判定不通过，需人工检查："
+  [ "$fail_traversal" -ne 4 ] && echo "    - 有穿越用例仍然成功，补丁可能未加载"
+  [ "$pass_controls" -ne 2 ] && echo "    - T0/T5 反证未通过，补丁可能改坏了正常行为"
+  echo "    原始输出: $OUT"
 fi
 echo
-echo "  回滚原版: cp $PLUGIN_JAR.orig $PLUGIN_JAR && $CATALINA_HOME/bin/shutdown.sh && /lab/run-lab.sh"
+echo "  回滚原版: cp $PLUGIN_JAR.orig $PLUGIN_JAR && /lab/restart-tomcat.sh"
