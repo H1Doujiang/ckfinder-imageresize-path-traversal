@@ -50,6 +50,27 @@ docker rm -f ckfinder-lab; docker rmi ckfinder-lab:2.6.2
 `docker stop` 会连带停掉容器（supervisor 只在 `/lab/.restart` 标记存在时才重新拉起 Tomcat）。
 `deploy.sh` 是同一流程的封装（`all` / `fix` / `down` / `poc` / `up` / `build`）。
 
+### 复现其他受影响版本
+
+缺陷存在于全部 20 个可获取的 Java 2.x 版本，`WAR_VERSION` 可切换被测版本
+（各版本 WAR 的 SHA-256 见仓库根目录 `ADVISORY-hashes.md`）：
+
+```bash
+docker build --build-arg WAR_VERSION=2.1 \
+             --build-arg EXPECT_WAR_SHA256=4856551ede93e720eb1b7f4a83e118547563b137832ed553620414b41a52b2c9 \
+             -t ckfinder-lab:2.1 .
+docker run -d --name ckfinder-lab-21 -p 18081:8080 ckfinder-lab:2.1
+```
+
+两点版本差异会被 PoC 自动处理，不需要改用例：
+
+- **响应格式**：2.0–2.5 的 `QuickUpload` 返回 JS 回调（`OnUploadCompleted(...)`），
+  2.6.x 返回 JSON（`{"fileName":...}`）；`exploit.py` 按响应里出现的文件名统一提取。
+- **覆盖能力**：2.0.2–2.5.0 的 `canWrite()` 判定缺 `exists()` 前置判断，
+  覆盖既有文件一律失败；2.5.1 起恢复正常。T3 会先探测本版本行为再按对应判据断言，
+  两条分支都应报 6/6。
+- **WAR 文件名**：2.0.x–2.3.1 为 `CKFinderJava.war`，2.4+ 为 `CKFinderJava-<版本>.war`，`setup.sh` 按版本推导。
+
 ## 3. 容器内布局与对照关系
 
 | 角色 | 容器内路径 | 对外 URL |
@@ -111,7 +132,7 @@ $ javap -p -constants ... IConfiguration
 | T0 | 匿名 `Init` | `Error 0`（无认证） |
 | T1 | `newFileName=xd/../../../../upload/login/poc-public.png` | `Error 0`，落盘 + 匿名 GET 200 |
 | T2 | 跨应用写 `xd/../../../../../shared/poc-shared.png` | `Error 0`，落盘 |
-| T3 | 覆盖既有 `victim.png`：无 `overwrite` vs `overwrite=1` | 前者 `Error 115` 且文件不变；后者 `Error 0` 且内容被 PNG 替换 |
+| T3 | 覆盖既有 `victim.png`：无 `overwrite` vs `overwrite=1` | 支持覆盖的版本：前者 `Error 115` 且文件不变，后者 `Error 0` 且内容被 PNG 替换；2.0.2–2.5.0 拒绝一切覆盖，判据相应改为"文件未被改动" |
 | T4 | 请求尺寸 == 源图尺寸 | 输出与源图 sha256 完全一致（原样字节复制，尾部附加数据保留） |
 | T5 | 反证 4 项 | 点开头名→`102`；`.jsp`→`105`；源图不存在→`117`；目录内正常改名→`Error 0` |
 
@@ -122,6 +143,7 @@ $ javap -p -constants ... IConfiguration
 
 - `docker run -p 18080:8080` 绑定所有网卡。若宿主机不可信，改用
   `-p 127.0.0.1:18080:8080` 只监听回环。
-- Tomcat 必须为 9.x（javax.servlet）；Tomcat 10+ 是 jakarta.servlet，CKFinder 2.6.x 无法运行。
-- 官方 WAR 自带 `commons-fileupload-1.2.2`、`thumbnailator-0.4.8` 等依赖，无需额外下载。
+- Tomcat 必须为 9.x（javax.servlet）；Tomcat 10+ 是 jakarta.servlet，CKFinder 2.x 无法运行。
+- 官方 WAR 自带 `commons-fileupload`、`thumbnailator` 等依赖，无需额外下载。
+- 已实测的版本：2.0.2、2.1、2.3.1、2.5.0、2.5.1、2.6.0、2.6.2 —— 均 6/6。
 - 官方发行包为 licensed software，本实验室仅用于授权范围内的漏洞研究与报送。
