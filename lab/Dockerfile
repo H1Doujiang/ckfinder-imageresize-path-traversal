@@ -1,4 +1,4 @@
-# CKFinder for Java 2.6.x —— ImageResize 路径穿越写漏洞 · 隔离复现实验室
+# CKFinder for Java 2.x —— ImageResize 路径穿越写漏洞 · 隔离复现实验室
 #
 # 基础镜像：ubuntu:22.04（纯净，不使用任何既有业务容器）
 # 运行时：OpenJDK 8（javax.servlet 世代，与 2.6.x 原始部署一致）+ Tomcat 9（javax.servlet 容器）

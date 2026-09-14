@@ -1,6 +1,6 @@
 # CKFinder 复现实验室（Docker / ubuntu:22.04）
 
-隔离复现 CKFinder for Java 2.6.x 的 ImageResize 路径穿越写漏洞。
+隔离复现 CKFinder for Java 2.x 的 ImageResize 路径穿越写漏洞（全部 20 个可获取的 2.x 版本均受影响）。
 厂商二进制不随仓库分发，构建时从官方渠道下载并校验 SHA-256。
 
 ---

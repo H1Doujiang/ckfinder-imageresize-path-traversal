@@ -1,17 +1,17 @@
-# CKFinder for Java 2.6.x — Path Traversal Write in the ImageResize Plugin
+# CKFinder for Java 2.x — Path Traversal Write in the ImageResize Plugin
 
-[![Affected](https://img.shields.io/badge/affected-2.6.2%20%7C%202.6.2.1%20%7C%202.6.3-red)](#affected-versions)
+[![Affected](https://img.shields.io/badge/affected-2.0.2%20%E2%80%93%202.6.3-red)](#affected-versions)
 [![CWE](https://img.shields.io/badge/CWE--22%20%7C%20CWE--73-orange)](#root-cause)
 [![Vendor](https://img.shields.io/badge/vendor%20status-unfixed%20%2F%20EOL-lightgrey)](#disclosure-timeline)
 
 **English** | [中文说明](#中文说明)
 
-The `ImageResize` command of the `ImageResizePlugin` bundled with CKFinder for Java 2.6.x
+The `ImageResize` command of the `ImageResizePlugin` bundled with CKFinder for Java 2.x
 validates the user-supplied output file name with an inverted boolean condition (`&&` where
 `||` was intended) and then joins that name into a filesystem path without canonicalization.
 A traversal name — invalid, but not hidden — passes the guard, so files can be written
 outside the configured resource directory, including into publicly readable web directories.
-With `overwrite=1`, existing files are replaced.
+On 2.5.1 and later, `overwrite=1` also replaces existing files.
 
 | | |
 |---|---|
