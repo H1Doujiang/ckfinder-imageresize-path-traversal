@@ -11,25 +11,21 @@
 lab/
 ├── Dockerfile                      # ubuntu:22.04 + OpenJDK 8 + Tomcat 9
 ├── setup.sh                        # Tomcat 9 + WAR + 配置补丁 + 测试源图
-├── run-lab.sh                      # 容器入口：supervisor，Tomcat 重启后容器不退出
-├── restart-tomcat.sh               # 只重启 Tomcat
-├── stop-lab.sh                     # 让容器退出（无需 docker stop）
+├── run-lab.sh                      # 容器入口：supervisor，只认 /lab/.restart 标记
+├── restart-tomcat.sh               # 只重启 Tomcat，等旧实例停稳再拉起
 ├── src/                            # 离线构建用，默认空（见 src/README.md）
 ├── poc/
 │   ├── exploit.py                  # T0~T5 用例 + 自动判定
 │   └── poc.sh                      # 等连接器就绪后执行 exploit.py
 ├── fix-verify/
-│   ├── ImageResizeCommad-patched.java   # 加固版（&& -> || + canonical 边界校验）
-│   └── run.sh                           # 编译补丁 -> 替换 jar -> 重启 -> 重跑同一套 PoC
+│   ├── ImageResizeCommad-patched.java   # 加固版（canonical 边界校验）
+│   └── run.sh                           # 编译补丁 -> 替换 jar -> 重启 -> 重跑并判定
 └── diag/                           # 排查用，不参与主链路
     ├── probe-depth.py              # 标定 ../ 穿越深度，找落点
     ├── probe-createfolder.py       # 单独验证 CreateFolder 的 CSRF 与返回
-    ├── probe-t1.py                 # 复刻 T1 并打印完整响应
     ├── verify-ckfindercommand.sh   # 验证 CKFinderCommand 必须是表单参数
     ├── install-paramdump.sh        # 装一个把请求参数打印到日志的过滤器
-    ├── ParamDumpFilter.java
-    ├── fire-requests.sh            # 发一组 GET/POST 请求供过滤器观察
-    └── inspect.sh                  # 查看容器内目录布局与配置
+    └── ParamDumpFilter.java
 ```
 
 ## 2. 快速开始
@@ -51,6 +47,7 @@ docker exec -it ckfinder-lab bash                         # 进容器手动复�
 docker rm -f ckfinder-lab; docker rmi ckfinder-lab:2.6.2
 ```
 
+`docker stop` 会连带停掉容器（supervisor 只在 `/lab/.restart` 标记存在时才重新拉起 Tomcat）。
 `deploy.sh` 是同一流程的封装（`all` / `fix` / `down` / `poc` / `up` / `build`）。
 
 ## 3. 容器内布局与对照关系

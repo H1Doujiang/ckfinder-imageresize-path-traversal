@@ -3,7 +3,8 @@
 # 为什么不是简单的 `exec catalina.sh run`：
 #   容器内 `shutdown.sh` 会停掉 Tomcat —— 而 Tomcat 就是 PID 1，
 #   一旦它退出容器就整体退出了（修复验证需要反复重启 Tomcat）。
-#   因此这里用极简 supervisor：Tomcat 退出后按需拉起，容器保持存活。
+#   因此这里用极简 supervisor：只认 /lab/.restart 标记，其余情况一律跟随 Tomcat 退出，
+#   这样 `docker stop` 依然能正常关掉容器。
 set -uo pipefail
 
 export CATALINA_HOME="${CATALINA_HOME:-/opt/tomcat}"
@@ -20,9 +21,8 @@ mkdir -p "$CATALINA_HOME/webapps/shared/WEB-INF" "$CATALINA_HOME/webapps/ROOT/up
 echo "[run-lab] CKFinder 连接器: http://127.0.0.1:8080/ckfinder/core/connector/java/connector.java"
 echo "[run-lab] 资源目录: $CATALINA_HOME/webapps/ROOT/Resources/userfiles"
 
-STOP=/lab/.stop
 RESTART=/lab/.restart
-rm -f "$STOP" "$RESTART"
+rm -f "$RESTART"
 
 while true; do
   rm -f "$RESTART"
@@ -31,7 +31,6 @@ while true; do
   catalina.sh run &
   pid=$!
 
-  # 轮询：既等进程退出，也等"重启请求"标记
   while true; do
     if [ -f "$RESTART" ]; then
       echo "[run-lab] $(date '+%F %T') 收到重启请求，停止 Tomcat"
@@ -48,12 +47,9 @@ while true; do
 
   rm -f "$CATALINA_HOME"/bin/tomcat.pid 2>/dev/null || true
 
-  if [ -f "$STOP" ]; then
-    echo "[run-lab] 收到关闭请求，容器退出"
-    exit 0
-  fi
+  # 只有显式重启请求才重新拉起；否则跟随 Tomcat 退出（docker stop 走这条）
   if [ ! -f "$RESTART" ]; then
-    echo "[run-lab] Tomcat 已退出且未请求重启，容器退出"
+    echo "[run-lab] Tomcat 已退出，容器退出"
     exit 0
   fi
   echo "[run-lab] 重启 Tomcat"

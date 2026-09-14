@@ -33,17 +33,15 @@ COPY src/ /lab/src/
 COPY setup.sh        /lab/setup.sh
 COPY run-lab.sh      /lab/run-lab.sh
 COPY restart-tomcat.sh /lab/restart-tomcat.sh
-COPY stop-lab.sh     /lab/stop-lab.sh
 COPY poc/            /lab/poc/
 COPY fix-verify/     /lab/fix-verify/
 COPY diag/           /lab/diag/
 
 RUN chmod +x /lab/*.sh /lab/poc/*.sh /lab/fix-verify/*.sh /lab/diag/*.sh 2>/dev/null || true
 
-# 构建期完成依赖安装与部署，容器启动即可打
+# 构建期完成依赖安装与部署
 RUN /lab/setup.sh
 
 EXPOSE 8080
 
-# 默认保持前台常驻，便于 `docker exec` 进容器自行复测
 CMD ["/lab/run-lab.sh"]
