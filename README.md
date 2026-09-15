@@ -341,14 +341,19 @@ blocks all four traversal cases while leaving legitimate in-directory output wor
 
 ---
 
-## Disclosure timeline
+## Disclosure
 
-| Date | Event |
+| Order | Event |
 |---|---|
-| 2026-09-14 | Defect identified and reproduced in the lab |
-| 2026-09-14 | This advisory published |
-| 2026-09-14 | Vendor notified (`security@cksource.com`); 14-day review window |
-| *pending* | CVE ID requested from MITRE |
+| 1 | Defect identified and reproduced in the lab |
+| 2 | This advisory published |
+| 3 | Vendor notified at `security@cksource.com` |
+| 4 | CVE ID requested from MITRE |
+
+No fixed embargo period was applied. CKFinder 2.6.3 is the final release of the 2.x line and
+CKFinder for Java has since moved to 3.x and 4.x, so no further 2.x security release is expected
+and the vendor's usual "wait for a fix" condition cannot be satisfied. The vendor was notified
+before the CVE request was filed, and a reply is welcome but was not treated as a precondition.
 
 ---
 
